@@ -290,62 +290,65 @@ end
 // Insert your code where indicated.
 always @ (*) begin
     // What is the correct default behavior? Place your command here.
-    row_op                                      = 'h0;
+    // row_op                                      = 'h0;
+
+    // @joshdelg Default behavior is to hold
+    row_op                                      = `SOBEL_ROW_OP_HOLD;
     
     case (state)
         STATE_WAIT: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg Should hold while waiting
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
         STATE_LOADING_1: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg Should shift if loading
+            row_op                              = `SOBEL_ROW_OP_SHIFT_ROW;
         end
         
         STATE_LOADING_2: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg Should shift if loading
+            row_op                              = `SOBEL_ROW_OP_SHIFT_ROW;
         end
         
         STATE_LOADING_3: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg Should shift if loading
+            row_op                              = `SOBEL_ROW_OP_SHIFT_ROW;
         end
         
         STATE_PROCESSING_CALC: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg If calculating, should hold
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
         STATE_PROCESSING_LOADSS: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg If loading, should shift register once to get 1 new row
+            row_op                              = `SOBEL_ROW_OP_SHIFT_ROW;
         end
         
         STATE_PROCESSING_CALC_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelf If calculating, should hold
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg If loading, should shift register once to get 1 new row
+            row_op                              = `SOBEL_ROW_OP_SHIFT_ROW;
         end
         
         STATE_PROCESSING_DONE: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // TODO: @joshdelg If done, should we HOLD OR CLEAR SOMEHOW???
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
         STATE_ERROR: begin
-            // What happens in case of an error? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @johdelg In error, should hold
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
         default: begin
-            // What happens in the default (unexpected) case? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg IN default case let's just hold
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
     endcase
 end
