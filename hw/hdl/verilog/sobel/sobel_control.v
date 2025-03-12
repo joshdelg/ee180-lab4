@@ -195,32 +195,35 @@ always @ (*) begin
         STATE_LOADING_1: begin
             if (go) begin
                 // *** Row 1 loading state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg Updated state
+                state_next                      = STATE_LOADING_2;
             end
         end
         
         STATE_LOADING_2: begin
             if (go) begin
                 // *** Row 2 loading state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg Updated state
+                state_next                      = STATE_LOADING_3;
             end
         end
         
         STATE_LOADING_3: begin
             if (go) begin
                 // *** Row 3 loading state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg Updated state
+                state_next                      = STATE_PROCESSING_CALC;
             end
         end
         
         STATE_PROCESSING_CALC: begin
             if (go) begin
                 // *** Calculation state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg If not last row -> STATE_PROC_LOADSS
+                // @joshdelg If last row -> STATE_PROC_LOADSS_LAST
+
+                // @joshdelg TODO: Figure out what row_counter signal should be
+                state_next                      = row_counter == `h0 ? STATE_PROC_LOADSS_LAST : STATE_PROC_LOADSS;
             end
         end
         
@@ -228,23 +231,26 @@ always @ (*) begin
             if (go) begin
                 // *** Next row loading state ***
                 // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg Udpated state
+                state_next                      = STATE_PROCESSING_CALC;
             end
         end
         
         STATE_PROCESSING_CALC_LAST: begin
             if (go) begin
                 // *** Last-row-in-column-strip calculation state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg If all cols done -> STATE_PROC_DONE
+                // @joshdelg If NOT all cols done -> STATE_LOADING_1
+                // @joshdelg TOOD: Make sure this is the right signal
+                state_next                      = col_strip == `h0 ? STATE_PROC_DONE : STATE_LOADING_1;
             end
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
             if (go) begin
                 // *** Last-row-in-column loading state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg Updated state
+                state_next                      = STATE_PROCESSING_CALC_LAST;
             end
         end
         
