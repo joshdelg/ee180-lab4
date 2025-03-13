@@ -96,7 +96,7 @@ generate
             // Combine the values above in a way that faithfully implements Sobel.
             // You may declare more signals as needed.
             convyTemp[c] = $signed(convy11[c]) + $signed(convy13[c] << 2) + $signed(convy21[c]) - $signed(convy23[c]) - $signed((convy31[c] << 2)) - $signed(convy33[c]);
-            convyAbs[c] = (convyTemp[c] < 0) ? $unsigned((convyTemp[c] * -1)) : $unsigned(convyTemp[c]);
+            convyAbs[c] = (convyTemp[c] < $signed(0)) ? $unsigned((convyTemp[c] * -1)) : $unsigned(convyTemp[c]);
             convy[c] = (convyAbs[c] > 255)? 255: convyAbs[c];
             // *** Calculation of the overall Sobel convolution result ***
             // The horizontal and vertical convolutions must be combined in a way that faithfully implements the Sobel convolution algorithm.
