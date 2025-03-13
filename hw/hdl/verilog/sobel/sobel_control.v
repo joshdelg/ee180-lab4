@@ -164,7 +164,7 @@ assign      next_col_strip                      = col_strip + `NUM_SOBEL_ACCELER
 // The value of this signal is the termination condition.
 // What is the highest possible value of col_strip that indicates there are still more input pixels to process?
 
-// @joshdelg It's not actually the value of col_strip, but its the column index in the input image of the last pixel for which we calculate the conv
+// @joshdelg This is the value col_strip_next will take on when we are on out last col_strip
 assign      max_col_strip                       = control_n_cols - `NUM_SOBEL_ACCELERATORS;
 
 generate
@@ -251,8 +251,8 @@ always @ (*) begin
                 // @joshdelg If doing last column -> STATE_PROC_DONE
                 // @joshdelg If NOT doing last cols -> STATE_LOADING_1
 
-                // @joshdelg Inside CALC_LAST the col_strip will always be the NEXT COL STRIP
-                state_next                      = (col_strip == max_col_strip) ? STATE_PROCESSING_DONE : STATE_LOADING_1;
+                // @joshdelg Inside CALC_LAST the col_strip will not be updated yet
+                state_next                      = (next_col_strip == max_col_strip) ? STATE_PROCESSING_DONE : STATE_LOADING_1;
             end
         end
         
@@ -349,7 +349,7 @@ always @ (*) begin
         end
         
         STATE_PROCESSING_DONE: begin
-            // TODO: @joshdelg If done, should we HOLD OR CLEAR SOMEHOW???
+            // TODO: @joshdelg If done, should hold
             row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
@@ -436,7 +436,7 @@ end
 
 // @joshdelg Col Strip Strategy
 // - Col Strip should be reset to 0 when done or while waiting
-// - Col Strip should only be incremented (by cores=2) on LOADSS_LAST
+// - Col Strip should only be incremented (by cores=2) on CALC_LAST
 // - Otherwise, Col Strip should be maintained
 
 always @ (*) begin
@@ -469,11 +469,11 @@ always @ (*) begin
         end
         
         STATE_PROCESSING_CALC_LAST: begin
-            col_strip_next                      = col_strip;
+            col_strip_next                      = next_col_strip;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
-            col_strip_next                      = col_strip + `NUM_SOBEL_ACCELERATORS;
+            col_strip_next                      = col_strip;
         end
         
         STATE_PROCESSING_DONE: begin
@@ -498,6 +498,17 @@ end
 // You should only write to the "buf_read_offset_next" signal in this block, no others.
 // Insert your code where indicated.
 
+// @joshdelg Strategy
+// !! DATA IS AVAILABLE IN SHIFT REG 2 CYCLES AFTER REQUESTED
+// Thus, we issue requests in LOADSS/LOADSS_LAST for what the subsequent LOADSS/LOADSS_LAST will need
+// Since reads take 2 cycles, we should initiate a read of Row 1 as soon as "go" is high
+//      - (A read of Row 0 is sorta initiated by default since the address is 0 while WAITing)
+// LOADING_1 should kick off the load for Row 2
+// LOADING_2 just maintains because loads for the first 3 rows have already been initiated
+// LOADING_3 should kick off the load for Row 3 the first one requires by LOADSS
+// LOADSS_LAST should initiate the load for Row 0 of the next column strip
+// CALC_LAST should initiate the load for Row 1 of the next column strip
+
 always @ (*) begin
     // What is the correct default behavior? Place your code here.
     buf_read_offset_next                        = 'h0;
@@ -508,9 +519,7 @@ always @ (*) begin
                 // Once the control signal is asserted, does something need to happen?
                 // Think about what the next state is going to be and what data the accelerator expects to get.
 
-                // @joshdelg The next state is LOAD_1, so we need to set the read address to row index 0, col offset should always
-                // be 0 because restarting image!
-                buf_read_offset_next            = 'h0;
+                buf_read_offset_next            = buf_read_offset + control_n_cols;
             end else begin
                 // If there is no control signal, just read from the beginning of the image.
                 // This part is provided for you.
@@ -519,52 +528,42 @@ always @ (*) begin
         end
         
         STATE_LOADING_1: begin
-            // @joshdelg Next state is LOAD_2, so set address to the row index 1 (keeping existing column offset)
             buf_read_offset_next                =  buf_read_offset + control_n_cols;
         end
         
         STATE_LOADING_2: begin
-            // @joshdelg Next state is LOAD_3, so set address to the row index 2 (keeping existing column offset)
-            buf_read_offset_next                = buf_read_offset + control_n_cols;
+            buf_read_offset_next                = buf_read_offset;
         end
         
         STATE_LOADING_3: begin
-            // @joshdelg Next state is the calculation, so no need to read new memory. Maintain address
-            buf_read_offset_next                = buf_read_offset;
-        end
-        
-        STATE_PROCESSING_CALC: begin
-            // @joshdelg Next state is a LOAD. We should load next row
             buf_read_offset_next                = buf_read_offset + control_n_cols;
         end
         
-        STATE_PROCESSING_LOADSS: begin
-            // @joshdelg Next state is CALC. No need to read new memory. Mainain address.
+        STATE_PROCESSING_CALC: begin
             buf_read_offset_next                = buf_read_offset;
+        end
+        
+        STATE_PROCESSING_LOADSS: begin
+            buf_read_offset_next                = buf_read_offset + control_n_cols;
         end
         
         STATE_PROCESSING_CALC_LAST: begin
-            // @joshdelg Next state is either LOAD_1 or DONE, set address to row 0 with next column strip (is already here, because we incremented in LOADSS_LAST)
-            buf_read_offset_next                = col_strip;
+            buf_read_offset_next                = buf_read_offset + control_n_cols;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
-            // @joshdelg Next state is CALC. No need to read new memory. Maintain address.
-            buf_read_offset_next                = buf_read_offset;
+            buf_read_offset_next                = next_col_strip;
         end
         
         STATE_PROCESSING_DONE: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_read_offset_next                = 'h0;
         end
         
         STATE_ERROR: begin
-            // What happens in case of an error? Insert your code here. If nothing changes, you can remove this case completely.
             buf_read_offset_next                = 'h0;
         end
         
         default: begin
-            // What happens in the default (unexpected) case? Insert your code here. If nothing changes, you can remove this case completely.
             buf_read_offset_next                = 'h0;
         end
     endcase
@@ -579,66 +578,56 @@ end
 // Insert your code where indicated.
 
 // @joshdelg Strategy
-// - Should start at row 0 column 0
-// LOAD/CALC transition -> increment by a row
-// CALC_LAST -> reset to row 0, next column offset
+// Unlike reads, writes will happen immediately with their given address
+// So, we need addressed to be vaild in CALC stages, so we set next in LOADSS stages
+// by incrementing by a row of the OUTPUT image
+// In CALC_LAST, we need to set the next right address to the new column offset at row 0
+
 always @ (*) begin
-    // What is the correct default behavior? Place your code here.
-    buf_write_offset_next                       =  buf_write_offset;
+    buf_write_offset_next                       =  'h0;
     
     case (state)
         STATE_WAIT: begin
-            // What should the starting value be? Insert your code here.
             buf_write_offset_next               = 'h0;
         end
         
         STATE_LOADING_1: begin
-            // @joshdelg No writing, just transfer
             buf_write_offset_next               = buf_write_offset;
         end
         
         STATE_LOADING_2: begin
-            // @joshdelg No writing, just transfer
             buf_write_offset_next               = buf_write_offset;
         end
         
         STATE_LOADING_3: begin
-            // @joshdelg Will write in next stage, but row/col already 0 so no need to increment.
             buf_write_offset_next               = buf_write_offset;
         end
         
         STATE_PROCESSING_CALC: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_offset_next               = buf_write_offset;
         end
         
         STATE_PROCESSING_LOADSS: begin
-            // @joshdelg Will be writing in the next state, so should add a OUTPUT ROW offset
             buf_write_offset_next               = buf_write_offset + buf_write_row_incr;
         end
         
         STATE_PROCESSING_CALC_LAST: begin
-            // @joshdelg Will be moving columns after this, so reset to row 0, col_strip (was incremented in LOADSS_LAST)
-            buf_write_offset_next               = col_strip;
+            buf_write_offset_next               = next_col_strip;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
-            // @joshdelg Will be writing in the next state, so should add an OUTPUT ROW offset
             buf_write_offset_next               = buf_write_offset + buf_write_row_incr;
         end
         
         STATE_PROCESSING_DONE: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_offset_next               = 'h0;
         end
         
         STATE_ERROR: begin
-            // What happens in case of an error? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_offset_next               = 'h0;
         end
         
         default: begin
-            // What happens in the default (unexpected) case? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_offset_next               = 'h0;
         end
     endcase
@@ -654,64 +643,52 @@ end
 // You should only write to the "buf_write_en" signal in this block, no others.
 // Insert your code where indicated.
 
-// @joshdelg no flip flop, so should be in calculation stages
+// @joshdelg no flip flop, so should be on in calculation stages
 always @ (*) begin
-    // What is the correct default behavior? Place your code here.
     buf_write_en                                = 1'b0;
     
     case (state)
         STATE_WAIT: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b0;
         end
         
         STATE_LOADING_1: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b0;
         end
         
         STATE_LOADING_2: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b0;
         end
         
         STATE_LOADING_3: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b0;
         end
         
         STATE_PROCESSING_CALC: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b1;
         end
         
         STATE_PROCESSING_LOADSS: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b0;
         end
         
         STATE_PROCESSING_CALC_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b1;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b0;
         end
         
         STATE_PROCESSING_DONE: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b0;
         end
         
         STATE_ERROR: begin
-            // What happens in case of an error? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b0;
         end
         
         default: begin
-            // What happens in the default (unexpected) case? Insert your code here. If nothing changes, you can remove this case completely.
             buf_write_en                        = 1'b0;
         end
     endcase
