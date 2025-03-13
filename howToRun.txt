@@ -1,0 +1,5 @@
+in sim folder
+make
+
+or make_test name
+

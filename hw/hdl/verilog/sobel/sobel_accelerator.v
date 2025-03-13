@@ -46,7 +46,11 @@ assign      sacc2swt_write_data                 = sobel_out;
 // If you need any extra signals to help with the convolution, declare them here. Otherwise, you may remove these comments.
 // Note that you will need to use "reg" (not "wire") for any signals written to inside the "always" block.
 
-
+reg signed [11:0] convxTemp[`NUM_SOBEL_ACCELERATORS-1:0];
+reg signed [11:0] convyTemp[`NUM_SOBEL_ACCELERATORS-1:0];
+reg [11:0] convxAbs[`NUM_SOBEL_ACCELERATORS-1:0];
+reg [11:0] convyAbs[`NUM_SOBEL_ACCELERATORS-1:0];
+reg [11:0] sobel_sumTemp[`NUM_SOBEL_ACCELERATORS-1:0];                                  // for holding the complete (sobel_sum) and partial (conv[xy]*) Sobel convolution sums
 
 // *** Sobel convolution implementation ***
 // The provided implementation is incomplete. You will need to finish it.
@@ -75,7 +79,9 @@ generate
             
             // Combine the values above in a way that faithfully implements Sobel.
             // You may declare more signals as needed.
-            convx[c]   = 'h0; 
+            convxTemp[c] = $signed(convx11[c]) + $signed((convx12[c] << 2)) + $signed(convx13[c]) - $signed(convx31[c]) - $signed((convx32[c] << 2)) - $signed(convx33[c]); 
+            convxAbs[c] = (convxTemp[c] < 0) ? $unsigned((convxTemp[c] * -1)) : $unsigned(convxTemp[c]);
+            convx[c] = (convxAbs[c] > 255)? 255: convxAbs[c];
             
             // *** Calculation of the vertical Sobel convolution ***
             // Each "convy" value corresponds to an input to that calculation, a different pixel in the 9-by-9 grid.
@@ -89,12 +95,13 @@ generate
             
             // Combine the values above in a way that faithfully implements Sobel.
             // You may declare more signals as needed.
-            convy[c]   = 'h0;
-            
+            convyTemp[c] = $signed(convy11[c]) + $signed(convy13[c] << 2) + $signed(convy21[c]) - $signed(convy23[c]) - $signed((convy31[c] << 2)) - $signed(convy33[c]);
+            convyAbs[c] = (convyTemp[c] < 0) ? $unsigned((convyTemp[c] * -1)) : $unsigned(convyTemp[c]);
+            convy[c] = (convyAbs[c] > 255)? 255: convyAbs[c];
             // *** Calculation of the overall Sobel convolution result ***
             // The horizontal and vertical convolutions must be combined in a way that faithfully implements the Sobel convolution algorithm.
-            sobel_sum[c] = 'h0;
-            
+            sobel_sumTemp[c] = convx[c] + convy[c];
+            sobel_sum[c] =(sobel_sumTemp[c] > 255)? 255: sobel_sumTemp[c];
             // *** Writing out the Sobel convolution result ***
             // This line should place the output of the Sobel convolution (the lines above) into the correct location in the output byte vector.
             // It currently does that without modifications. You may need to change it or keep it as is, depending on your implementation.
