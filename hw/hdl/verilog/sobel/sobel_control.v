@@ -73,6 +73,9 @@ reg         [IOBUF_ADDR_WIDTH-1:0]              buf_write_offset_next;          
 reg                                             buf_write_en;                   // write enable signal, driven combinationally
 wire        [IMAGE_DIM_WIDTH-1:0]               buf_write_row_incr;             // specifies the row increment for output, equals input width minus 2, driven combinationally
 wire        [IMAGE_DIM_WIDTH-1:0]               next_col_strip;                 // specifies the next column strip to process, equals current column strip + number of accelerators
+
+                                                                                // @joshdelg This mad confusing... but Ed says this is actually the INDEX OF THE LAST COL
+                                                                                // we will be processing in the final column strip
 wire        [IMAGE_DIM_WIDTH-1:0]               max_col_strip;                  // specifies the highest column strip to process before being done, equals the number of columns - number of accelerators
 reg         [`SOBEL_ROW_OP_WIDTH-1:0]           row_op;                         // specifies the command to send to the Sobel image row registers
 wire        [`NUM_SOBEL_ACCELERATORS-1:0]       pixel_write_en;                 // per-pixel write enable signal
@@ -147,19 +150,22 @@ dffre #(IOBUF_ADDR_WIDTH)               buf_write_offset_r (                    
 
 // *** Row address increment ***
 // The value of this signal specifies the width of an output row.
-// Insert your code here.
-assign      buf_write_row_incr                  = 'h0;
+
+// @joshdelg Spec says each output row has input_cols - 2, since 1 pixel = 1 byte, this is control_n_cols - 2
+assign      buf_write_row_incr                  = control_n_cols - 2;
 
 // *** Column strip increment ***
 // The value of this signal specifies the start column of the next column strip.
-// Insert your code here.
-assign      next_col_strip                      = 'h0;
+
+// @joshdelg Should equal current col strip + number of accelerators
+assign      next_col_strip                      = col_strip + `NUM_SOBEL_ACCELERATORS;
 
 // *** Column strip maximum ***
 // The value of this signal is the termination condition.
 // What is the highest possible value of col_strip that indicates there are still more input pixels to process?
-// Insert your code here.
-assign      max_col_strip                       = 'h0;
+
+// @joshdelg It's not actually the value of col_strip, but its the column index in the input image of the last pixel for which we calculate the conv
+assign      max_col_strip                       = control_n_cols - `NUM_SOBEL_ACCELERATORS;
 
 generate
 for (i = 0; i < `NUM_SOBEL_ACCELERATORS; i = i + 1) begin: sobel_write_en
@@ -167,7 +173,11 @@ for (i = 0; i < `NUM_SOBEL_ACCELERATORS; i = i + 1) begin: sobel_write_en
 // *** Write enable ***
 // If pixel_write_en[i] is set to 1, this tells the memory system that the current pixel at index i from the Sobel accelerator contains valid data to be written.
 // Make sure to only set it to 1 when the Sobel accelerator is producing valid data at that pixel position.
-assign      pixel_write_en[i]                   = 'h0;
+
+// @joshdelg We should write data when we're in either calculation state
+// @joshdelg though this is probably just for turning off processors, since we only have 2
+// @joshdelg and images are even, we could probably make this always on
+assign      pixel_write_en[i]                   = (state == STATE_PROCESSING_CALC || state == STATE_PROCESSING_CALC_LAST);
 
 end
 endgenerate
@@ -195,32 +205,34 @@ always @ (*) begin
         STATE_LOADING_1: begin
             if (go) begin
                 // *** Row 1 loading state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg Updated state
+                state_next                      = STATE_LOADING_2;
             end
         end
         
         STATE_LOADING_2: begin
             if (go) begin
                 // *** Row 2 loading state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg Updated state
+                state_next                      = STATE_LOADING_3;
             end
         end
         
         STATE_LOADING_3: begin
             if (go) begin
                 // *** Row 3 loading state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg Updated state
+                state_next                      = STATE_PROCESSING_CALC;
             end
         end
         
         STATE_PROCESSING_CALC: begin
             if (go) begin
                 // *** Calculation state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg If not 2nd to last row -> STATE_PROC_LOADSS
+                // @joshdelg If 2nd to last row -> STATE_PROC_LOADSS_LAST
+                // @joshdelg Inside CALC, the row counter will always be the row index relative to the INPUT image
+                state_next                      = (row_counter == control_n_rows - 3) ? STATE_PROCESSING_LOADSS_LAST : STATE_PROCESSING_LOADSS;
             end
         end
         
@@ -228,23 +240,27 @@ always @ (*) begin
             if (go) begin
                 // *** Next row loading state ***
                 // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg Udpated state
+                state_next                      = STATE_PROCESSING_CALC;
             end
         end
         
         STATE_PROCESSING_CALC_LAST: begin
             if (go) begin
                 // *** Last-row-in-column-strip calculation state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg If doing last column -> STATE_PROC_DONE
+                // @joshdelg If NOT doing last cols -> STATE_LOADING_1
+
+                // @joshdelg Inside CALC_LAST the col_strip will always be the NEXT COL STRIP
+                state_next                      = (col_strip == max_col_strip) ? STATE_PROCESSING_DONE : STATE_LOADING_1;
             end
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
             if (go) begin
                 // *** Last-row-in-column loading state ***
-                // Insert your state transition code here.
-                state_next                      = STATE_ERROR;
+                // @joshdelg Updated state
+                state_next                      = STATE_PROCESSING_CALC_LAST;
             end
         end
         
@@ -282,64 +298,69 @@ end
 // When using macros, remember to add the ` character before the name, such as `SOBEL_ROW_OP_HOLD (just SOBEL_ROW_OP_HOLD won't work).
 // You should only write to the "row_op" signal in this block, no others.
 // Insert your code where indicated.
+
+// @joshdelg -- This part is instantaneous! Not flip-flopped.
 always @ (*) begin
     // What is the correct default behavior? Place your command here.
-    row_op                                      = 'h0;
+    // row_op                                      = 'h0;
+
+    // @joshdelg Default behavior is to hold
+    row_op                                      = `SOBEL_ROW_OP_HOLD;
     
     case (state)
         STATE_WAIT: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg Should hold while waiting
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
         STATE_LOADING_1: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg Should shift if loading
+            row_op                              = `SOBEL_ROW_OP_SHIFT_ROW;
         end
         
         STATE_LOADING_2: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg Should shift if loading
+            row_op                              = `SOBEL_ROW_OP_SHIFT_ROW;
         end
         
         STATE_LOADING_3: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg Should shift if loading
+            row_op                              = `SOBEL_ROW_OP_SHIFT_ROW;
         end
         
         STATE_PROCESSING_CALC: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg If calculating, should hold
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
         STATE_PROCESSING_LOADSS: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg If loading, should shift register once to get 1 new row
+            row_op                              = `SOBEL_ROW_OP_SHIFT_ROW;
         end
         
         STATE_PROCESSING_CALC_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelf If calculating, should hold
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg If loading, should shift register once to get 1 new row
+            row_op                              = `SOBEL_ROW_OP_SHIFT_ROW;
         end
         
         STATE_PROCESSING_DONE: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // TODO: @joshdelg If done, should we HOLD OR CLEAR SOMEHOW???
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
         STATE_ERROR: begin
-            // What happens in case of an error? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @johdelg In error, should hold
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
         
         default: begin
-            // What happens in the default (unexpected) case? Insert your code here. If nothing changes, you can remove this case completely.
-            row_op                              = 'h0;
+            // @joshdelg IN default case let's just hold
+            row_op                              = `SOBEL_ROW_OP_HOLD;
         end
     endcase
 end
@@ -349,63 +370,58 @@ end
 // How the row counter changes is related to the current state of the accelerator's state machine.
 // You should only write to the "row_counter_next" signal in this block, no others.
 // Insert your code where indicated.
+
+
+// @joshdelg Row Incrementation Scheme
+// row_counter = index of current calculation relative to INPUT (or, 1 + index relative to OUTPUT)
+// row_counter incremented on LOADS
 always @ (*) begin
     // Default behavior is to maintain the current row number.
     row_counter_next                            = row_counter;
     
     case (state)
         STATE_WAIT: begin
-            // What should the starting value be? Insert your code here.
             row_counter_next                    = 'h0;
         end
         
         STATE_LOADING_1: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             row_counter_next                    = 'h0;
         end
         
         STATE_LOADING_2: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             row_counter_next                    = 'h0;
         end
         
         STATE_LOADING_3: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_counter_next                    = 'h0;
+            row_counter_next                    = row_counter + 1;
         end
         
         STATE_PROCESSING_CALC: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_counter_next                    = 'h0;
+            row_counter_next                    = row_counter;
         end
         
         STATE_PROCESSING_LOADSS: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_counter_next                    = 'h0;
+            row_counter_next                    = row_counter + 1;
         end
         
         STATE_PROCESSING_CALC_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
+            // @joshdelg Must reset row back to 0 when starting new col strip
             row_counter_next                    = 'h0;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            row_counter_next                    = 'h0;
+            row_counter_next                    = row_counter + 1;
         end
         
         STATE_PROCESSING_DONE: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             row_counter_next                    = 'h0;
         end
         
         STATE_ERROR: begin
-            // What happens in case of an error? Insert your code here. If nothing changes, you can remove this case completely.
             row_counter_next                    = 'h0;
         end
         
         default: begin
-            // What happens in the default (unexpected) case? Insert your code here. If nothing changes, you can remove this case completely.
             row_counter_next                    = 'h0;
         end
     endcase
@@ -417,63 +433,58 @@ end
 // For example, with 2 accelerators accepting 4 bytes of input, if column strip is 2, then the accelerators expect columns 2, 3, 4, and 5 as input for each row.
 // You should only write to the "col_strip_next" signal in this block, no others.
 // Insert your code where indicated.
+
+// @joshdelg Col Strip Strategy
+// - Col Strip should be reset to 0 when done or while waiting
+// - Col Strip should only be incremented (by cores=2) on LOADSS_LAST
+// - Otherwise, Col Strip should be maintained
+
 always @ (*) begin
     // Default behavior is to maintain the current column strip.
     col_strip_next                              = col_strip;
     
     case (state)
         STATE_WAIT: begin
-            // What should the starting value be? Insert your code here.
             col_strip_next                      = 'h0;
         end
         
         STATE_LOADING_1: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            col_strip_next                      = 'h0;
+            col_strip_next                      = col_strip;
         end
         
         STATE_LOADING_2: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            col_strip_next                      = 'h0;
+            col_strip_next                      = col_strip;
         end
         
         STATE_LOADING_3: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            col_strip_next                      = 'h0;
+            col_strip_next                      = col_strip;
         end
         
         STATE_PROCESSING_CALC: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            col_strip_next                      = 'h0;
+            col_strip_next                      = col_strip;
         end
         
         STATE_PROCESSING_LOADSS: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            col_strip_next                      = 'h0;
+            col_strip_next                      = col_strip;
         end
         
         STATE_PROCESSING_CALC_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            col_strip_next                      = 'h0;
+            col_strip_next                      = col_strip;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            col_strip_next                      = 'h0;
+            col_strip_next                      = col_strip + `NUM_SOBEL_ACCELERATORS;
         end
         
         STATE_PROCESSING_DONE: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
             col_strip_next                      = 'h0;
         end
         
         STATE_ERROR: begin
-            // What happens in case of an error? Insert your code here. If nothing changes, you can remove this case completely.
             col_strip_next                      = 'h0;
         end
         
         default: begin
-            // What happens in the default (unexpected) case? Insert your code here. If nothing changes, you can remove this case completely.
             col_strip_next                      = 'h0;
         end
     endcase
@@ -486,6 +497,7 @@ end
 // Since images are stored in row-major order, the read address would be equal to (row number * row width) + (column number).
 // You should only write to the "buf_read_offset_next" signal in this block, no others.
 // Insert your code where indicated.
+
 always @ (*) begin
     // What is the correct default behavior? Place your code here.
     buf_read_offset_next                        = 'h0;
@@ -495,6 +507,9 @@ always @ (*) begin
             if (go) begin
                 // Once the control signal is asserted, does something need to happen?
                 // Think about what the next state is going to be and what data the accelerator expects to get.
+
+                // @joshdelg The next state is LOAD_1, so we need to set the read address to row index 0, col offset should always
+                // be 0 because restarting image!
                 buf_read_offset_next            = 'h0;
             end else begin
                 // If there is no control signal, just read from the beginning of the image.
@@ -504,38 +519,38 @@ always @ (*) begin
         end
         
         STATE_LOADING_1: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_read_offset_next                = 'h0;
+            // @joshdelg Next state is LOAD_2, so set address to the row index 1 (keeping existing column offset)
+            buf_read_offset_next                =  buf_read_offset + control_n_cols;
         end
         
         STATE_LOADING_2: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_read_offset_next                = 'h0;
+            // @joshdelg Next state is LOAD_3, so set address to the row index 2 (keeping existing column offset)
+            buf_read_offset_next                = buf_read_offset + control_n_cols;
         end
         
         STATE_LOADING_3: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_read_offset_next                = 'h0;
+            // @joshdelg Next state is the calculation, so no need to read new memory. Maintain address
+            buf_read_offset_next                = buf_read_offset;
         end
         
         STATE_PROCESSING_CALC: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_read_offset_next                = 'h0;
+            // @joshdelg Next state is a LOAD. We should load next row
+            buf_read_offset_next                = buf_read_offset + control_n_cols;
         end
         
         STATE_PROCESSING_LOADSS: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_read_offset_next                = 'h0;
+            // @joshdelg Next state is CALC. No need to read new memory. Mainain address.
+            buf_read_offset_next                = buf_read_offset;
         end
         
         STATE_PROCESSING_CALC_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_read_offset_next                = 'h0;
+            // @joshdelg Next state is either LOAD_1 or DONE, set address to row 0 with next column strip (is already here, because we incremented in LOADSS_LAST)
+            buf_read_offset_next                = col_strip;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_read_offset_next                = 'h0;
+            // @joshdelg Next state is CALC. No need to read new memory. Maintain address.
+            buf_read_offset_next                = buf_read_offset;
         end
         
         STATE_PROCESSING_DONE: begin
@@ -562,9 +577,14 @@ end
 // Also, the size of the output image is different from the size of the input image!
 // You should only write to the "buf_write_offset_next" signal in this block, no others.
 // Insert your code where indicated.
+
+// @joshdelg Strategy
+// - Should start at row 0 column 0
+// LOAD/CALC transition -> increment by a row
+// CALC_LAST -> reset to row 0, next column offset
 always @ (*) begin
     // What is the correct default behavior? Place your code here.
-    buf_write_offset_next                       = 'h0;
+    buf_write_offset_next                       =  buf_write_offset;
     
     case (state)
         STATE_WAIT: begin
@@ -573,38 +593,38 @@ always @ (*) begin
         end
         
         STATE_LOADING_1: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_write_offset_next               = 'h0;
+            // @joshdelg No writing, just transfer
+            buf_write_offset_next               = buf_write_offset;
         end
         
         STATE_LOADING_2: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_write_offset_next               = 'h0;
+            // @joshdelg No writing, just transfer
+            buf_write_offset_next               = buf_write_offset;
         end
         
         STATE_LOADING_3: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_write_offset_next               = 'h0;
+            // @joshdelg Will write in next stage, but row/col already 0 so no need to increment.
+            buf_write_offset_next               = buf_write_offset;
         end
         
         STATE_PROCESSING_CALC: begin
             // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_write_offset_next               = 'h0;
+            buf_write_offset_next               = buf_write_offset;
         end
         
         STATE_PROCESSING_LOADSS: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_write_offset_next               = 'h0;
+            // @joshdelg Will be writing in the next state, so should add a OUTPUT ROW offset
+            buf_write_offset_next               = buf_write_offset + buf_write_row_incr;
         end
         
         STATE_PROCESSING_CALC_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_write_offset_next               = 'h0;
+            // @joshdelg Will be moving columns after this, so reset to row 0, col_strip (was incremented in LOADSS_LAST)
+            buf_write_offset_next               = col_strip;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
-            // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_write_offset_next               = 'h0;
+            // @joshdelg Will be writing in the next state, so should add an OUTPUT ROW offset
+            buf_write_offset_next               = buf_write_offset + buf_write_row_incr;
         end
         
         STATE_PROCESSING_DONE: begin
@@ -633,6 +653,8 @@ end
 // So if it is set to 1, it means that the address supplied by "buf_write_offset" is immediately valid in its current form.
 // You should only write to the "buf_write_en" signal in this block, no others.
 // Insert your code where indicated.
+
+// @joshdelg no flip flop, so should be in calculation stages
 always @ (*) begin
     // What is the correct default behavior? Place your code here.
     buf_write_en                                = 1'b0;
@@ -660,7 +682,7 @@ always @ (*) begin
         
         STATE_PROCESSING_CALC: begin
             // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_write_en                        = 1'b0;
+            buf_write_en                        = 1'b1;
         end
         
         STATE_PROCESSING_LOADSS: begin
@@ -670,7 +692,7 @@ always @ (*) begin
         
         STATE_PROCESSING_CALC_LAST: begin
             // What happens in this state? Insert your code here. If nothing changes, you can remove this case completely.
-            buf_write_en                        = 1'b0;
+            buf_write_en                        = 1'b1;
         end
         
         STATE_PROCESSING_LOADSS_LAST: begin
