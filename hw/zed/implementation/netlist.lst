@@ -1,0 +1,16 @@
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system.ngc 1741911569
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_processing_system7_0_wrapper.ngc 1741910683
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_util_vector_logic_0_wrapper.ngc 1741910739
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_axi_i2s_adi_0_wrapper.ngc 1741910752
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_gp_interconnect_wrapper.ngc 1741911516
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_se_control_interconnect_wrapper.ngc 1741911541
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_se_src_interconnect_wrapper.ngc 1741911526
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_se_dst_interconnect_wrapper.ngc 1741911531
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_axi_spdif_tx_0_wrapper.ngc 1741910705
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_axi_dma_stream_wrapper.ngc 1741911536
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_stream_engine_0_wrapper.ngc 1741911511
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_clock_generator_0_wrapper.ngc 1741911521
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_axi_iic_0_wrapper.ngc 1741910722
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_axi_iic_1_wrapper.ngc 1741910778
+/home/users/joshdelg/ee180/lab4/hw/zed/implementation/system_util_i2c_mixer_0_wrapper.ngc 1741910761
+OK
